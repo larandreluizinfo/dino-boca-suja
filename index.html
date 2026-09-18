@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Dino Boca Suja 🦖🤬</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    font-family:'Courier New',monospace; background:#f7f7f7; color:#333;
+    display:flex; flex-direction:column; align-items:center;
+    min-height:100vh; padding:12px; touch-action:manipulation;
+  }
+  h1 { font-size:clamp(20px,5vw,28px); margin-bottom:4px; text-align:center; }
+  h1 .dirty { color:#e74c3c; }
+  p.sub { color:#666; margin-bottom:10px; font-size:13px; text-align:center; max-width:95vw; }
+  #gameWrap { position:relative; width:900px; max-width:96vw; }
+  canvas {
+    background:#fff; border:3px solid #333; border-radius:8px;
+    width:100%; height:auto; display:block; image-rendering:pixelated;
+    touch-action:none;
+  }
+  #hud {
+    display:flex; gap:8px; justify-content:space-between; align-items:center;
+    margin-top:10px; flex-wrap:wrap; width:900px; max-width:96vw;
+  }
+  .btnGroup { display:flex; gap:8px; flex-wrap:wrap; }
+  button {
+    font-family:inherit; font-weight:bold; cursor:pointer;
+    border:2px solid #333; border-radius:8px; padding:8px 12px;
+    background:#fff; font-size:13px; user-select:none;
+  }
+  button:hover { background:#333; color:#fff; }
+  button.active { background:#e74c3c; color:#fff; border-color:#e74c3c; }
+  #counter { font-size:13px; }
+  /* Controles mobile */
+  #mobileControls {
+    display:none; width:900px; max-width:96vw; margin-top:10px;
+    gap:12px; user-select:none;
+  }
+  #mobileControls.show { display:flex; }
+  .touchBtn {
+    flex:1; padding:18px 10px; font-size:20px; font-weight:bold;
+    border-radius:12px; border:3px solid #333; background:#fff;
+    text-align:center; touch-action:none;
+  }
+  .touchBtn:active { transform:scale(0.96); }
+  #btnJump { background:#2ecc71; color:#fff; border-color:#1e8449; }
+  #btnDuck { background:#f39c12; color:#fff; border-color:#b97900; }
+  #swearLog {
+    width:900px; max-width:96vw; margin-top:10px; background:#222; color:#0f0;
+    border-radius:8px; padding:10px 14px; font-size:13px;
+    min-height:60px; max-height:130px; overflow-y:auto;
+  }
+  #wordList {
+    width:900px; max-width:96vw; margin-top:10px; background:#fff;
+    border:2px dashed #999; border-radius:8px; padding:10px 14px;
+    font-size:12px; color:#555; margin-bottom:30px;
+  }
+  #hint {
+    margin-top:8px; font-size:12px; color:#888; text-align:center;
+    width:900px; max-width:96vw;
+  }
+  @media (max-width:600px){
+    body{padding:8px;} button{font-size:12px; padding:7px 10px;}
+  }
+</style>
+</head>
+<body>
+<h1>🦖 DINO <span class="dirty">BOCA SUJA</span> 🤬</h1>
+<p class="sub">Espaço / ↑ / toque = pular + xingar • ↓ = agachar (desvia do ptero baixo!) • P = pausa</p>
+
+<div id="gameWrap"><canvas id="game" width="900" height="320"></canvas></div>
+
+<div id="hud">
+  <div class="btnGroup">
+    <button id="voiceBtn">🗣️ Voz: ON</button>
+    <button id="sfxBtn">🔊 SFX: ON</button>
+    <button id="pauseBtn">⏸️ Pausa</button>
+    <button id="restartBtn">🔄 Restart</button>
+    <button id="fsBtn">⛶ Tela cheia</button>
+  </div>
+  <div id="counter">🤬 <b id="swearCount">0</b> | 🏆 <b id="best">0</b> | ⚡ <b id="speedShow">1x</b></div>
+</div>
+
+<div id="mobileControls">
+  <div class="touchBtn" id="btnDuck">⬇️ AGACHAR</div>
+  <div class="touchBtn" id="btnJump">⬆️ PULAR 🤬</div>
+</div>
+
+<div id="swearLog"><div>📜 Histórico de palavrões vai aparecer aqui...</div></div>
+<div id="hint">💡 No celular: botão verde pula, botão laranja agacha. Ptero <b style="color:#8e44ad">BAIXO</b> = AGACHE, não pule! A cada 100 pontos ele comemora xingando.</div>
+<div id="wordList"><b>📚 Dicionário Boca-Suja (32):</b> <span id="dict"></span></div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const GROUND_Y = 255;
+
+// ---------- PALAVRÕES ----------
+const SWEARS = [
+  {w:"FUCK!",lang:"en",flag:"🇺🇸",code:"en-US",tr:"foda-se"},
+  {w:"SHIT!",lang:"en",flag:"🇬🇧",code:"en-GB",tr:"merda"},
+  {w:"BITCH!",lang:"en",flag:"🇺🇸",code:"en-US",tr:"vadia"},
+  {w:"BASTARD!",lang:"en",flag:"🇬🇧",code:"en-GB",tr:"bastardo"},
+  {w:"ASSHOLE!",lang:"en",flag:"🇺🇸",code:"en-US",tr:"cuzao"},
+  {w:"DAMN IT!",lang:"en",flag:"🇺🇸",code:"en-US",tr:"droga"},
+  {w:"BOLLOCKS!",lang:"en",flag:"🇬🇧",code:"en-GB",tr:"besteira"},
+  {w:"DICKHEAD!",lang:"en",flag:"🇬🇧",code:"en-GB",tr:"cabeca de pica"},
+  {w:"MOTHERFUCKER!",lang:"en",flag:"🇺🇸",code:"en-US",tr:"filho da puta"},
+  {w:"CRAP!",lang:"en",flag:"🇬🇧",code:"en-GB",tr:"bosta"},
+  {w:"SON OF A BITCH!",lang:"en",flag:"🇺🇸",code:"en-US",tr:"filho da puta"},
+  {w:"PISS OFF!",lang:"en",flag:"🇬🇧",code:"en-GB",tr:"vai se foder"},
+  {w:"MERDE!",lang:"fr",flag:"🇫🇷",code:"fr-FR",tr:"merda"},
+  {w:"PUTAIN!",lang:"fr",flag:"🇫🇷",code:"fr-FR",tr:"puta que pariu"},
+  {w:"BORDEL!",lang:"fr",flag:"🇫🇷",code:"fr-FR",tr:"porra"},
+  {w:"CONNARD!",lang:"fr",flag:"🇫🇷",code:"fr-FR",tr:"babaca"},
+  {w:"SALOPE!",lang:"fr",flag:"🇫🇷",code:"fr-FR",tr:"vadia"},
+  {w:"ENCULÉ!",lang:"fr",flag:"🇫🇷",code:"fr-FR",tr:"fodido"},
+  {w:"FOUTRE!",lang:"fr",flag:"🇫🇷",code:"fr-FR",tr:"foda-se"},
+  {w:"CHIER!",lang:"fr",flag:"🇫🇷",code:"fr-FR",tr:"cagar"},
+  {w:"TA GUEULE!",lang:"fr",flag:"🇫🇷",code:"fr-FR",tr:"cala a boca"},
+  {w:"NIQUE TA MÈRE!",lang:"fr",flag:"🇫🇷",code:"fr-FR",tr:"fode tua mae"},
+  {w:"CAZZO!",lang:"it",flag:"🇮🇹",code:"it-IT",tr:"caralho"},
+  {w:"MERDA!",lang:"it",flag:"🇮🇹",code:"it-IT",tr:"merda"},
+  {w:"STRONZO!",lang:"it",flag:"🇮🇹",code:"it-IT",tr:"babaca"},
+  {w:"VAFFANCULO!",lang:"it",flag:"🇮🇹",code:"it-IT",tr:"vai tomar no cu"},
+  {w:"COGLIONE!",lang:"it",flag:"🇮🇹",code:"it-IT",tr:"idiota"},
+  {w:"PORCA MISERIA!",lang:"it",flag:"🇮🇹",code:"it-IT",tr:"puta miseria"},
+  {w:"BASTARDO!",lang:"it",flag:"🇮🇹",code:"it-IT",tr:"bastardo"},
+  {w:"FOTTITI!",lang:"it",flag:"🇮🇹",code:"it-IT",tr:"vai se foder"},
+  {w:"ROMPICOGLIONI!",lang:"it",flag:"🇮🇹",code:"it-IT",tr:"enche-saco"},
+  {w:"FIGLIO DI PUTTANA!",lang:"it",flag:"🇮🇹",code:"it-IT",tr:"filho da puta"},
+];
+document.getElementById('dict').textContent = SWEARS.map(s=>`${s.flag} ${s.w}`).join(' • ');
+
+// ---------- AUDIO SFX (Web Audio, sem arquivos) ----------
+let audioCtx = null;
+let voiceOn = true, sfxOn = true;
+function ac(){ if(!audioCtx){ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); } if(audioCtx.state==='suspended') audioCtx.resume(); return audioCtx; }
+function beep(freq, dur, type='square', vol=0.12, slide=0){
+  if(!sfxOn) return;
+  try{
+    const c = ac(), o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, c.currentTime);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,freq+slide), c.currentTime+dur);
+    g.gain.setValueAtTime(vol, c.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, c.currentTime+dur);
+    o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime+dur);
+  }catch(e){}
+}
+const sfxJump  = ()=>{ beep(300,0.18,'square',0.10,400); };
+const sfxPoint = ()=>{ beep(880,0.12,'sine',0.14); setTimeout(()=>beep(1320,0.15,'sine',0.14),110); };
+const sfxDie   = ()=>{ beep(400,0.4,'sawtooth',0.15,-350); };
+const sfxDuck  = ()=>{ beep(200,0.08,'triangle',0.06,-80); };
+const sfxStart = ()=>{ beep(523,0.1,'square',0.1); setTimeout(()=>beep(784,0.15,'square',0.1),100); };
+
+// ---------- ESTADO ----------
+let dino, obstacles, clouds, particles, score, hiScore=0, speed, gameOver, started, paused, frame;
+let swearBalloon=null, swearCount=0, ducking=false, night=false, flash100=0, nextMilestone=100;
+try{ hiScore = parseInt(localStorage.getItem('dinoHi')||'0'); }catch(e){}
+
+function reset(){
+  dino={x:60,y:GROUND_Y,w:44,h:50,vy:0,jumping:false,dead:false};
+  obstacles=[]; clouds=[{x:200,y:50},{x:500,y:80},{x:800,y:40}];
+  particles=[]; score=0; speed=6; gameOver=false; started=false; paused=false;
+  frame=0; swearBalloon=null; nextMilestone=100; flash100=0;
+  document.getElementById('best').textContent=Math.floor(hiScore);
+  document.getElementById('pauseBtn').textContent='⏸️ Pausa';
+}
+
+function swear(special){
+  const s = special || SWEARS[Math.floor(Math.random()*SWEARS.length)];
+  swearBalloon={text:s.w,flag:s.flag,timer:95};
+  swearCount++;
+  document.getElementById('swearCount').textContent=swearCount;
+  const log=document.getElementById('swearLog');
+  if(swearCount===1) log.innerHTML='';
+  const div=document.createElement('div');
+  const time=new Date().toLocaleTimeString('pt-BR');
+  div.textContent=`${s.flag} #${swearCount} [${time}] ${s.w} (${s.lang} = ${s.tr})`;
+  log.prepend(div);
+  while(log.children.length>40) log.removeChild(log.lastChild);
+  speak(s);
+}
+function speak(s){
+  if(!voiceOn) return;
+  try{
+    if(!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(s.w);
+    u.lang=s.code; u.rate=1.2; u.pitch=0.6; u.volume=1;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+function jump(){
+  ac();
+  if(gameOver){ reset(); started=true; sfxStart(); return; }
+  if(paused) return;
+  started=true;
+  if(!dino.jumping){ dino.jumping=true; dino.vy=-14.5; ducking=false; sfxJump(); swear(); }
+}
+function die(){
+  gameOver=true; dino.dead=true; sfxDie();
+  for(let i=0;i<20;i++) particles.push({x:dino.x+20,y:dino.y-25,vx:(Math.random()-0.5)*6,vy:-Math.random()*6,life:40,c:'#e74c3c'});
+  swear({w:"FUUUUCK! GAME OVER!",lang:"en",flag:"💀",code:"en-US",tr:"game over"});
+  if(Math.floor(score)>Math.floor(hiScore)){ hiScore=score; try{localStorage.setItem('dinoHi',Math.floor(hiScore));}catch(e){} }
+  document.getElementById('best').textContent=Math.floor(hiScore);
+}
+
+// ---------- INPUT TECLADO + MOUSE ----------
+window.addEventListener('keydown',e=>{
+  if(e.code==='Space'||e.code==='ArrowUp'){ e.preventDefault(); jump(); }
+  if(e.code==='ArrowDown'){ e.preventDefault(); if(!ducking){ducking=true; sfxDuck();} }
+  if(e.code==='KeyP'){ togglePause(); }
+  if(e.code==='KeyM'){ toggleVoice(); }
+  if(e.code==='Enter'&&gameOver){ reset(); started=true; }
+});
+window.addEventListener('keyup',e=>{ if(e.code==='ArrowDown') ducking=false; });
+canvas.addEventListener('mousedown',jump);
+
+// ---------- MOBILE: botões + swipe + toque no canvas ----------
+const isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
+if(isMobile) document.getElementById('mobileControls').classList.add('show');
+
+const btnJump=document.getElementById('btnJump'), btnDuck=document.getElementById('btnDuck');
+function bindHold(el,down,up){
+  el.addEventListener('touchstart',e=>{e.preventDefault();down();},{passive:false});
+  el.addEventListener('touchend',e=>{e.preventDefault();if(up)up();},{passive:false});
+  el.addEventListener('mousedown',e=>{e.preventDefault();down();});
+  el.addEventListener('mouseup',()=>{if(up)up();});
+  el.addEventListener('mouseleave',()=>{if(up)up();});
+}
+bindHold(btnJump,()=>jump(),null);
+bindHold(btnDuck,()=>{ducking=true;},{/* solta */});
+document.addEventListener('touchend',()=>{},{passive:true});
+btnDuck.addEventListener('touchend',e=>{e.preventDefault();ducking=false;},{passive:false});
+
+// toque no canvas: metade de cima = pulo, metade de baixo segurada = agacha
+let touchDucking=false;
+canvas.addEventListener('touchstart',e=>{
+  e.preventDefault(); ac();
+  const t=e.changedTouches[0], r=canvas.getBoundingClientRect();
+  const yRel=(t.clientY-r.top)/r.height;
+  if(yRel>0.65){ ducking=true; touchDucking=true; }
+  else jump();
+},{passive:false});
+canvas.addEventListener('touchend',e=>{ e.preventDefault(); if(touchDucking){ducking=false; touchDucking=false;} },{passive:false});
+
+// swipe down = agachar rápido no mobile
+let tsY=0;
+window.addEventListener('touchmove',e=>{
+  if(e.touches.length>0){
+    const dy=e.touches[0].clientY-tsY;
+    if(dy>30) ducking=true;
+  }
+},{passive:true});
+window.addEventListener('touchstart',e=>{ if(e.touches.length>0) tsY=e.touches[0].clientY; },{passive:true});
+
+// ---------- BOTÕES HUD ----------
+function toggleVoice(){ voiceOn=!voiceOn; document.getElementById('voiceBtn').textContent=voiceOn?'🗣️ Voz: ON':'🗣️ Voz: OFF'; document.getElementById('voiceBtn').classList.toggle('active',!voiceOn); }
+function togglePause(){
+  if(!started||gameOver) return;
+  paused=!paused;
+  document.getElementById('pauseBtn').textContent=paused?'▶️ Continuar':'⏸️ Pausa';
+}
+document.getElementById('voiceBtn').onclick=toggleVoice;
+document.getElementById('sfxBtn').onclick=e=>{ sfxOn=!sfxOn; e.target.textContent=sfxOn?'🔊 SFX: ON':'🔇 SFX: OFF'; if(sfxOn) sfxPoint(); };
+document.getElementById('pauseBtn').onclick=togglePause;
+document.getElementById('restartBtn').onclick=()=>{ ac(); reset(); started=true; sfxStart(); };
+document.getElementById('fsBtn').onclick=()=>{
+  const el=document.documentElement;
+  if(document.fullscreenElement) document.exitFullscreen();
+  else if(el.requestFullscreen) el.requestFullscreen();
+};
+
+// ---------- OBSTÁCULOS (cacto + ptero alto/médio/BAIXO) ----------
+function spawnObstacle(){
+  const r=Math.random();
+  // ptero aparece depois dos 150 pts; quanto maior score, mais ptero baixo (que exige agachar)
+  if(score>150 && r<0.42){
+    const roll=Math.random();
+    let y, kind;
+    if(score>400 && roll<0.4){ y=218; kind='LOW ⬇ AGACHE!'; }       // BAIXO: só passa agachado
+    else if(roll<0.7){ y=175; kind='MID'; }                          // MÉDIO: pula ou agacha
+    else { y=135; kind='HIGH'; }                                     // ALTO: pula por baixo correndo (ou pula)
+    obstacles.push({type:'bird',x:W+20,y:y,w:46,h:28,kind:kind});
+  } else if(score>80 && r<0.55){
+    // cacto duplo
+    obstacles.push({type:'cactus',x:W+20,w:22,h:44});
+    obstacles.push({type:'cactus',x:W+52,w:22,h:44});
+  } else {
+    const big=Math.random()<0.4;
+    obstacles.push({type:'cactus',x:W+20,w:big?34:22,h:big?62:44});
+  }
+}
+
+// ---------- DESENHO ----------
+function drawDino(){
+  const {x,y,w,h}=dino;
+  const isDuck=ducking&&!dino.jumping;
+  const dh=isDuck?h-22:h, dy=isDuck?y+22:y;
+  if(dino.dead){ ctx.save(); ctx.translate(x+22,dy-20); ctx.rotate(Math.PI); ctx.fillStyle='#e74c3c'; ctx.fillRect(-22,-10,44,30); ctx.restore(); return {dy,dh}; }
+  ctx.fillStyle=night?'#7bed9f':'#2ecc71';
+  if(isDuck){ // dino alongado agachado
+    ctx.fillRect(x-10,dy-26,w+20,16);
+    ctx.fillRect(x+34,dy-38,28,20);      // cabeça baixa
+    ctx.fillRect(x+56,dy-32,12,9);       // focinho
+    ctx.fillStyle='#fff'; ctx.fillRect(x+48,dy-34,8,8);
+    ctx.fillStyle='#e74c3c'; ctx.fillRect(x+50,dy-32,4,4);
+    ctx.fillStyle='#7a0000'; ctx.fillRect(x+56,dy-24,12,6); // boca xingando
+    ctx.fillStyle=night?'#7bed9f':'#2ecc71';
+    ctx.fillRect(x-24,dy-24,16,8);       // rabo
+    const leg=Math.floor(frame/5)%2;
+    ctx.fillRect(x+2,dy-10,10,10); ctx.fillRect(x+26,dy-leg*5,10,10);
+  } else {
+    ctx.fillRect(x,dy-dh,w,dh-10);
+    ctx.fillRect(x+22,dy-dh-14,26,22);
+    ctx.fillRect(x+42,dy-dh-8,10,10);
+    ctx.fillStyle='#fff'; ctx.fillRect(x+38,dy-dh-10,8,8);
+    ctx.fillStyle='#e74c3c'; ctx.fillRect(x+40,dy-dh-8,4,4);
+    ctx.fillStyle='#7a0000'; ctx.fillRect(x+42,dy-dh+2,10,6);
+    ctx.fillStyle=night?'#7bed9f':'#2ecc71';
+    ctx.fillRect(x-14,dy-30,16,10);
+    const leg=Math.floor(frame/6)%2;
+    if(dino.jumping){ ctx.fillRect(x+6,dy-10,8,6); ctx.fillRect(x+28,dy-14,8,6); }
+    else { ctx.fillRect(x+6,dy-10,8,10); ctx.fillRect(x+28,dy-10,8,leg?4:10); }
+    ctx.fillRect(x+26,dy-dh+12,10,5);
+  }
+  return {dy,dh};
+}
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function drawBalloon(dx,dy){
+  if(!swearBalloon) return;
+  const text=`${swearBalloon.flag} ${swearBalloon.text}`;
+  ctx.font='bold 18px Courier New';
+  const tw=ctx.measureText(text).width, bw=tw+20, bh=34;
+  let bx=dx+10, by=dy-125;
+  if(by<8) by=8;
+  if(bx+bw>W-10) bx=W-bw-10;
+  ctx.fillStyle='#fff'; ctx.strokeStyle='#333'; ctx.lineWidth=2;
+  roundRect(bx,by,bw,bh,10); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx+20,by+bh); ctx.lineTo(dx+30,dy-48); ctx.lineTo(bx+38,by+bh);
+  ctx.fillStyle='#fff'; ctx.fill(); ctx.stroke();
+  ctx.fillStyle='#c0392b'; ctx.fillText(text,bx+10,by+23);
+  swearBalloon.timer--;
+  if(swearBalloon.timer<=0) swearBalloon=null;
+}
+
+function draw(){
+  // fundo dia/noite (alterna a cada 500 pts)
+  night = Math.floor(score/500)%2===1;
+  ctx.fillStyle=night?'#1a1a2e':'#fff';
+  ctx.fillRect(0,0,W,H);
+  // sol/lua
+  ctx.fillStyle=night?'#f4f1de':'#f9ca24';
+  ctx.beginPath(); ctx.arc(W-100,60,22,0,Math.PI*2); ctx.fill();
+  // nuvens
+  ctx.fillStyle=night?'#444':'#ddd';
+  clouds.forEach(c=>{ ctx.fillRect(c.x,c.y,50,14); ctx.fillRect(c.x+10,c.y-8,30,10); });
+  // chão
+  ctx.fillStyle=night?'#eee':'#333'; ctx.fillRect(0,GROUND_Y+2,W,2);
+  ctx.fillStyle=night?'#555':'#999';
+  for(let i=0;i<6;i++){ let gx=(i*220-(score*3)%220); ctx.fillRect(gx,GROUND_Y+10+(i%3)*6,30,3); }
+  // poeira correndo
+  if(started&&!gameOver&&!dino.jumping){
+    ctx.fillStyle=night?'#666':'#ccc';
+    for(let i=0;i<3;i++){ const px=dino.x-10-((frame*4+i*25)%80); ctx.fillRect(px,GROUND_Y-2-(i*3)%8,6,4); }
+  }
+  const pos=drawDino();
+  drawBalloon(dino.x,pos.dy-pos.dh);
+  // obstáculos
+  obstacles.forEach(o=>{
+    if(o.type==='cactus'){
+      ctx.fillStyle=night?'#2ecc71':'#1e8449';
+      ctx.fillRect(o.x,GROUND_Y-o.h,o.w,o.h);
+      ctx.fillStyle=night?'#7bed9f':'#27ae60';
+      ctx.fillRect(o.x-7,GROUND_Y-o.h+14,7,18); ctx.fillRect(o.x+o.w,GROUND_Y-o.h+22,7,18);
+      ctx.fillStyle='#145a32';
+      for(let s=0;s<o.h;s+=12) ctx.fillRect(o.x,GROUND_Y-o.h+s,o.w,2);
+    } else {
+      const isLow=o.kind&&o.kind.startsWith('LOW');
+      ctx.fillStyle=isLow?'#e74c3c':'#8e44ad'; // ptero baixo = vermelho = perigo!
+      const flap=Math.floor(frame/8)%2;
+      ctx.fillRect(o.x,o.y,o.w,o.h-10);
+      ctx.fillRect(o.x+32,o.y+4,14,8);
+      ctx.fillStyle='#fff'; ctx.fillRect(o.x+34,o.y+5,5,5);
+      ctx.fillStyle='#e74c3c'; ctx.fillRect(o.x+35,o.y+6,3,3);
+      ctx.fillStyle=isLow?'#e74c3c':'#8e44ad';
+      if(flap) ctx.fillRect(o.x+5,o.y-10,20,8); else ctx.fillRect(o.x+5,o.y+18,20,8);
+      if(isLow){ // alerta
+        ctx.fillStyle='#e74c3c'; ctx.font='bold 12px Courier New';
+        ctx.fillText('⬇ AGACHE!',o.x-4,o.y-14);
+      }
+    }
+  });
+  // partículas (morte)
+  particles.forEach(p=>{ ctx.fillStyle=p.c; ctx.fillRect(p.x,p.y,5,5); });
+  // score
+  ctx.fillStyle=night?'#fff':'#333'; ctx.font='bold 18px Courier New';
+  ctx.fillText(String(Math.floor(score)).padStart(5,'0'),W-80,30);
+  ctx.fillText('HI '+String(Math.floor(hiScore)).padStart(5,'0'),W-190,30);
+  if(flash100>0){ ctx.fillStyle='#e74c3c'; ctx.font='bold 30px Courier New'; ctx.fillText('+100 🤬',W/2-60,80); flash100--; }
+  if(paused){ ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(0,0,W,H); ctx.fillStyle='#fff'; ctx.font='bold 36px Courier New'; ctx.fillText('⏸️ PAUSADO',W/2-110,H/2); }
+  if(!started){
+    ctx.fillStyle='rgba(0,0,0,0.65)'; ctx.font='bold 24px Courier New';
+    const msg=isMobile?'TOQUE P/ COMEÇAR':'APERTE ESPAÇO P/ COMEÇAR';
+    ctx.fillText(msg,W/2-ctx.measureText(msg).width/2,H/2-20);
+    ctx.font='15px Courier New';
+    const sub='Cada pulo = 1 palavrão 🤬 • Ptero vermelho = AGACHE!';
+    ctx.fillText(sub,W/2-ctx.measureText(sub).width/2,H/2+12);
+  }
+  if(gameOver){
+    ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#fff'; ctx.font='bold 40px Courier New'; ctx.fillText('GAME OVER',W/2-130,H/2-20);
+    ctx.font='bold 19px Courier New'; ctx.fillStyle='#ff6b6b';
+    const msg2='💀 FUUUUCK! (morreu e xingou!)';
+    ctx.fillText(msg2,W/2-ctx.measureText(msg2).width/2,H/2+18);
+    ctx.fillStyle='#fff'; ctx.font='15px Courier New';
+    const msg3=isMobile?'Toque para tentar de novo':'Espaço / clique para tentar de novo';
+    ctx.fillText(msg3,W/2-ctx.measureText(msg3).width/2,H/2+48);
+  }
+}
+
+// ---------- LOOP ----------
+function update(){
+  frame++;
+  if(started&&!gameOver&&!paused){
+    score+=0.15+speed*0.012;
+    document.getElementById('speedShow').textContent=(speed/6).toFixed(1)+'x';
+    if(score>=nextMilestone){ sfxPoint(); flash100=60; swear(); nextMilestone+=100; } // comemora xingando!
+    if(Math.floor(score)>Math.floor(hiScore)){ hiScore=score; document.getElementById('best').textContent=Math.floor(hiScore); }
+    if(frame%100===0) speed+=0.25;
+    dino.vy+=0.85; dino.y+=dino.vy;
+    if(dino.y>=GROUND_Y){ dino.y=GROUND_Y; dino.vy=0; dino.jumping=false; }
+    clouds.forEach(c=>{ c.x-=1.2; if(c.x<-60){c.x=W+50; c.y=30+Math.random()*90;} });
+    if(frame%Math.max(48,95-Math.floor(speed*3))===0) spawnObstacle();
+    // hitbox (agachado = mais baixo e mais comprido)
+    const isDuck=ducking&&!dino.jumping;
+    const dh=isDuck?dino.h-22:dino.h;
+    const dTop=(isDuck?dino.y+22:dino.y)-dh, dBot=dino.y;
+    const dLeft=dino.x+(isDuck?-8:0), dRight=dino.x+dino.w+(isDuck?18:0);
+    for(let o of obstacles){
+      o.x-=speed;
+      let oTop=o.type==='cactus'?GROUND_Y-o.h:o.y;
+      let oBot=o.type==='cactus'?GROUND_Y:o.y+o.h;
+      if(dRight<o.x+8||dLeft>o.x+o.w-8) continue;
+      if(dTop<oBot-8&&dBot>oTop+8){ die(); break; }
+    }
+    obstacles=obstacles.filter(o=>o.x>-70);
+  }
+  particles.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.vy+=0.4; p.life--; });
+  particles=particles.filter(p=>p.life>0);
+  draw();
+  requestAnimationFrame(update);
+}
+reset();
+document.getElementById('best').textContent=Math.floor(hiScore);
+update();
+</script>
+</body>
+</html>
