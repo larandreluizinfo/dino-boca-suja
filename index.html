@@ -61,6 +61,8 @@
     margin-top:8px; font-size:12px; color:#888; text-align:center;
     width:900px; max-width:96vw;
   }
+  #ytPlayer { position:absolute; width:2px; height:2px; left:-9999px; top:-9999px; opacity:0; pointer-events:none; }
+  #nowPlaying { font-size:12px; color:#8e44ad; font-weight:bold; }
   @media (max-width:600px){
     body{padding:8px;} button{font-size:12px; padding:7px 10px;}
   }
@@ -76,12 +78,15 @@
   <div class="btnGroup">
     <button id="voiceBtn">🗣️ Voz: ON</button>
     <button id="sfxBtn">🔊 SFX: ON</button>
+    <button id="musicBtn">🎵 Música: ON</button>
     <button id="pauseBtn">⏸️ Pausa</button>
     <button id="restartBtn">🔄 Restart</button>
     <button id="fsBtn">⛶ Tela cheia</button>
   </div>
   <div id="counter">🤬 <b id="swearCount">0</b> | 🏆 <b id="best">0</b> | ⚡ <b id="speedShow">1x</b></div>
 </div>
+<div id="nowPlaying">🎵 VAFFANCULO — <a href="https://www.youtube.com/watch?v=x2l8cW7uSCU" target="_blank" rel="noopener">YouTube</a> em loop enquanto corre</div>
+<div id="ytPlayer"></div>
 
 <div id="mobileControls">
   <div class="touchBtn" id="btnDuck">⬇️ AGACHAR</div>
@@ -156,6 +161,51 @@ const sfxDie   = ()=>{ beep(400,0.4,'sawtooth',0.15,-350); };
 const sfxDuck  = ()=>{ beep(200,0.08,'triangle',0.06,-80); };
 const sfxStart = ()=>{ beep(523,0.1,'square',0.1); setTimeout(()=>beep(784,0.15,'square',0.1),100); };
 
+// ---------- MÚSICA DE FUNDO (YouTube em loop, só enquanto corre) ----------
+// Vídeo: https://www.youtube.com/watch?v=x2l8cW7uSCU (VAFFANCULO)
+// Embed via YouTube IFrame API — o áudio toca em loop enquanto o dino corre.
+const YT_VIDEO_ID = 'x2l8cW7uSCU';
+let ytPlayer = null, ytReady = false, musicOn = true, musicPlaying = false;
+function loadYouTubeAPI(){
+  if(document.querySelector('script[data-yt-api]')) return;
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  tag.setAttribute('data-yt-api','1');
+  document.head.appendChild(tag);
+}
+function onYouTubeIframeAPIReady(){
+  try{
+    ytPlayer = new YT.Player('ytPlayer', {
+      videoId: YT_VIDEO_ID,
+      playerVars: { autoplay:0, loop:1, playlist:YT_VIDEO_ID, rel:0, playsinline:1 },
+      events: {
+        onReady: (e)=>{ ytReady=true; e.target.setVolume(35); syncMusic(); },
+        onStateChange: (e)=>{
+          // garante loop mesmo se o flag loop falhar
+          if(e.data===YT.PlayerState.ENDED && musicOn){ e.target.playVideo(); }
+          musicPlaying = (e.data===YT.PlayerState.PLAYING);
+        }
+      }
+    });
+  }catch(e){}
+}
+window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
+loadYouTubeAPI();
+function shouldPlayMusic(){ return musicOn && ytReady && started && !gameOver && !paused; }
+function syncMusic(){
+  if(!ytReady || !ytPlayer || typeof ytPlayer.playVideo!=='function') return;
+  try{
+    if(shouldPlayMusic() && !musicPlaying){ ytPlayer.playVideo(); }
+    else if(!shouldPlayMusic() && musicPlaying){ ytPlayer.pauseVideo(); }
+  }catch(e){}
+}
+function toggleMusic(){
+  musicOn=!musicOn;
+  document.getElementById('musicBtn').textContent=musicOn?'🎵 Música: ON':'🎵 Música: OFF';
+  document.getElementById('musicBtn').classList.toggle('active',!musicOn);
+  syncMusic();
+}
+
 // ---------- ESTADO ----------
 let dino, obstacles, clouds, particles, score, hiScore=0, speed, gameOver, started, paused, frame;
 let swearBalloon=null, swearCount=0, ducking=false, night=false, flash100=0, nextMilestone=100;
@@ -168,6 +218,7 @@ function reset(){
   frame=0; swearBalloon=null; nextMilestone=100; flash100=0;
   document.getElementById('best').textContent=Math.floor(hiScore);
   document.getElementById('pauseBtn').textContent='⏸️ Pausa';
+  musicPlaying=false; syncMusic();
 }
 
 function swear(special){
@@ -196,13 +247,14 @@ function speak(s){
 }
 function jump(){
   ac();
-  if(gameOver){ reset(); started=true; sfxStart(); return; }
+  if(gameOver){ reset(); started=true; sfxStart(); syncMusic(); return; }
   if(paused) return;
   started=true;
   if(!dino.jumping){ dino.jumping=true; dino.vy=-14.5; ducking=false; sfxJump(); swear(); }
+  syncMusic();
 }
 function die(){
-  gameOver=true; dino.dead=true; sfxDie();
+  gameOver=true; dino.dead=true; sfxDie(); syncMusic();
   for(let i=0;i<20;i++) particles.push({x:dino.x+20,y:dino.y-25,vx:(Math.random()-0.5)*6,vy:-Math.random()*6,life:40,c:'#e74c3c'});
   swear({w:"FUUUUCK! GAME OVER!",lang:"en",flag:"💀",code:"en-US",tr:"game over"});
   if(Math.floor(score)>Math.floor(hiScore)){ hiScore=score; try{localStorage.setItem('dinoHi',Math.floor(hiScore));}catch(e){} }
@@ -215,7 +267,7 @@ window.addEventListener('keydown',e=>{
   if(e.code==='ArrowDown'){ e.preventDefault(); if(!ducking){ducking=true; sfxDuck();} }
   if(e.code==='KeyP'){ togglePause(); }
   if(e.code==='KeyM'){ toggleVoice(); }
-  if(e.code==='Enter'&&gameOver){ reset(); started=true; }
+  if(e.code==='Enter'&&gameOver){ reset(); started=true; syncMusic(); }
 });
 window.addEventListener('keyup',e=>{ if(e.code==='ArrowDown') ducking=false; });
 canvas.addEventListener('mousedown',jump);
@@ -264,11 +316,13 @@ function togglePause(){
   if(!started||gameOver) return;
   paused=!paused;
   document.getElementById('pauseBtn').textContent=paused?'▶️ Continuar':'⏸️ Pausa';
+  syncMusic();
 }
 document.getElementById('voiceBtn').onclick=toggleVoice;
+document.getElementById('musicBtn').onclick=toggleMusic;
 document.getElementById('sfxBtn').onclick=e=>{ sfxOn=!sfxOn; e.target.textContent=sfxOn?'🔊 SFX: ON':'🔇 SFX: OFF'; if(sfxOn) sfxPoint(); };
 document.getElementById('pauseBtn').onclick=togglePause;
-document.getElementById('restartBtn').onclick=()=>{ ac(); reset(); started=true; sfxStart(); };
+document.getElementById('restartBtn').onclick=()=>{ ac(); reset(); started=true; sfxStart(); syncMusic(); };
 document.getElementById('fsBtn').onclick=()=>{
   const el=document.documentElement;
   if(document.fullscreenElement) document.exitFullscreen();
