@@ -2,7 +2,7 @@
 
 O dinossauro do Google que xinga em inglês, francês e italiano a cada pulo.
 
-▶️ Jogue online (GitHub Pages): URL aparece aqui após ativar o Pages.
+▶️ Jogue online (GitHub Pages): https://larandreluizinfo.github.io/dino-boca-suja/
 
 ## Jogar local
 Abra `index.html` no navegador, ou:
